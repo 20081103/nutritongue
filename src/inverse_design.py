@@ -94,6 +94,10 @@ class InverseDesigner:
         # 类别编码数组, 用于类别一致性罚分
         self.cat_arr = np.array(self.cats)
         self.name_arr = np.array(self.names)
+        # 类别编码(用于"饮食搭配"模式的类别多样性罚分)
+        _cat_uniq = sorted(set(self.cats))
+        self.cat_codes = np.array([_cat_uniq.index(c) for c in self.cats])
+        self.n_cat = len(_cat_uniq)
         # 甜味强度(用于"香辛料×高甜"冲突检测, 与配方分析页一致)
         self.sweet_arr = self.df['sweet'].to_numpy(dtype=float) if 'sweet' in self.df.columns else np.zeros(self.n)
 
@@ -145,13 +149,22 @@ class InverseDesigner:
         pen += (has_acid & has_raw_dairy).astype(float) * 10.0
         pen += (has_pungent & high_sweet).astype(float) * 15.0
 
-        # --- 类别一致性(仅食品设计模式): 避免"水果+蔬菜"或"水果+主食"
-        # 等跨风味方向混搭成单一成品; 饮食搭配模式允许一餐内多元组合 ---
+        # --- 类别组合(按输出类型区分) ---
+        # 食品设计(单一成品): 惩罚"水果+蔬菜"或"水果+主食"等跨风味方向混搭;
+        # 饮食搭配(一餐组合): 食材应跨类别、可分开食用, 类别越集中于单一类别
+        #   越接近"一道菜"而非"一餐", 故对类别多样性不足施加罚分 ---
         if mode == 'product':
             has_veg = np.isin(self.cat_arr[idx], ['蔬菜菌藻']).sum(axis=1) > 0
             has_staple = np.isin(self.cat_arr[idx], ['主食']).sum(axis=1) > 0
             pen += (has_fruit & has_veg).astype(float) * 6.0
             pen += (has_fruit & has_staple).astype(float) * 6.0
+        else:
+            # 调味品(盐/糖/油等)不计入"食物类别", 一餐的多样性由主食/荤/素/果等构成
+            cc = np.where(self.is_cond[idx], -1, self.cat_codes[idx])  # (M,k)
+            n_food = (self.cat_codes[idx] >= 0).sum(axis=1)            # (M,) 非调味品数
+            n_distinct = ((cc[:, :, None] == np.arange(self.n_cat))
+                          .any(axis=1)).sum(axis=1)                    # (M,) 食物类别数
+            pen += (1.0 - n_distinct / np.maximum(n_food, 1)) * 10.0
         return d + pen, d
 
     # ---------------- 搜索 ----------------
