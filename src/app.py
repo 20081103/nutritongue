@@ -4,6 +4,7 @@
 Streamlit 交互应用：食品查询 / 配方分析 / 味觉预测 / 营养对比
 2026第八届全球校园人工智能算法精英大赛 - 赛题2: AI+软件创新
 """
+import importlib
 import sys
 from pathlib import Path
 
@@ -17,6 +18,10 @@ from taste_model import (  # noqa: E402
     TastePredictionModel, NutritionAnalyzer, FoodEvaluator,
     apply_taste_interactions,
 )
+import inverse_design as _inverse_design  # noqa: E402
+# Streamlit 重跑(Rerun)会复用进程内已导入的模块; 仓库源码更新后若进程未重启,
+# 会出现"新 app.py + 旧 inverse_design"的错配导致的 TypeError, 这里强制重载
+importlib.reload(_inverse_design)  # noqa: E402
 from inverse_design import design_recipes  # noqa: E402
 from uncertainty import TasteUncertainty  # noqa: E402
 
