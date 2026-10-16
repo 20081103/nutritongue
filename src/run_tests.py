@@ -162,6 +162,96 @@ def test_interactions(m):
         cor3['astringent'] < raw3['astringent'])
 
 
+def test_golden(m):
+    """演示案例点预测冻结守卫: 已发布材料中的实测数字逐值锁定"""
+    from taste_model import apply_taste_interactions
+    df = pd.read_csv(DATA_PATH, encoding='utf-8-sig')
+
+    def nut_of(name):
+        r = df[df['name'] == name].iloc[0]
+        return {c: float(r[c]) for c in m.feature_cols}
+
+    def mix(items):
+        tot = sum(g for _, g in items)
+        d = {c: 0.0 for c in m.feature_cols}
+        for n, g in items:
+            r = df[df['name'] == n].iloc[0]
+            for c in m.feature_cols:
+                d[c] += float(r[c]) * g / tot
+        return d
+
+    g1 = {'sweet': 1.01, 'sour': 1.18, 'salty': 1.81,
+          'bitter': 7.77, 'umami': 1.91, 'astringent': 3.0}
+    p1 = m.predict(nut_of('黑咖啡'))
+    rec('G-01', '冻结守卫', '黑咖啡六维点预测逐值不变(发布=苦7.8)', g1, p1, p1 == g1)
+    g2 = {'sweet': 2.35, 'sour': 1.28, 'salty': 2.8,
+          'bitter': 1.18, 'umami': 3.36, 'astringent': 0.93}
+    p2 = m.predict(nut_of('牛奶'))
+    rec('G-02', '冻结守卫', '牛奶六维点预测逐值不变(发布=鲜3.4)', g2, p2, p2 == g2)
+    d3 = mix([('苦瓜', 150), ('苹果', 200)])
+    raw3 = {'sweet': 5.77, 'sour': 3.07, 'salty': 1.23,
+            'bitter': 3.58, 'umami': 2.37, 'astringent': 2.48}
+    cor3 = {'sweet': 5.03, 'sour': 2.58, 'salty': 1.23,
+            'bitter': 2.75, 'umami': 2.46, 'astringent': 2.47}
+    pr3 = m.predict(d3)
+    pc3, _ = apply_taste_interactions(pr3, d3)
+    rec('G-03', '冻结守卫', '苦瓜150g+苹果200g原始预测不变', raw3, pr3, pr3 == raw3)
+    rec('G-04', '冻结守卫', '苦瓜150g+苹果200g交互修正不变(发布=甜5.0苦2.8)',
+        cor3, pc3, pc3 == cor3)
+    d4 = mix([('白粥', 198.5), ('三文鱼', 101.5)])
+    raw4 = {'sweet': 1.08, 'sour': 0.96, 'salty': 3.96,
+            'bitter': 1.28, 'umami': 6.49, 'astringent': 0.91}
+    pr4 = m.predict(d4)
+    rec('G-05', '冻结守卫', '白粥198.5g+三文鱼101.5g预测不变(发布=钠119mg)',
+        raw4, pr4, pr4 == raw4)
+
+
+def test_external(m):
+    from external_validation import evaluate_anchors
+    rs = evaluate_anchors(m)
+    rec('E-01', '文献锚点', '30+文献锚点区间命中率>=75%', '>=75%',
+        f"{rs['hits']}/{rs['n_anchors']}={rs['hit_rate'] * 100:.0f}%",
+        rs['hit_rate'] >= 0.75)
+    rec('E-02', '文献锚点', '平均越界偏差<=0.5', '<=0.5',
+        rs['mean_dist'], rs['mean_dist'] <= 0.5)
+    a_miss = [r for r in rs['rows'] if r['cls'] == 'A' and not r['hit']]
+    rec('E-03', '文献锚点', 'A类标准参照物(ISO/GB)全部命中', '6/6',
+        f"{6 - len(a_miss)}/6", len(a_miss) == 0)
+
+
+def test_recipes(m):
+    from recipe_validation import evaluate_recipes
+    rr = evaluate_recipes(m)
+    rec('R-01', '真实菜谱', '20道真实菜谱主导味觉top2一致率>=80%', '>=80%',
+        f"{rr['top2_hits']}/{rr['n_recipes']}={rr['top2_rate'] * 100:.0f}%",
+        rr['top2_rate'] >= 0.8)
+    rec('R-02', '真实菜谱', '主导味觉top1一致率>=70%', '>=70%',
+        f"{rr['top1_hits']}/{rr['n_recipes']}={rr['top1_rate'] * 100:.0f}%",
+        rr['top1_rate'] >= 0.7)
+
+
+def test_uncertainty(m):
+    from uncertainty import TasteUncertainty
+    uq = TasteUncertainty()
+    met = uq.train(str(DATA_PATH))
+    rec('U-01', '不确定性', '交叉保形区间覆盖率在[0.75,0.90](目标0.80)',
+        '0.75~0.90', met['coverage'],
+        0.75 <= met['coverage'] <= 0.90)
+    mx = max(met['margins'].values())
+    rec('U-02', '不确定性', '各维度区间半宽<=1.5(不过度保守)', '<=1.5',
+        mx, mx <= 1.5)
+    pt = m.predict({'calories': 2, 'protein': 0.3, 'carbs': 0, 'fat': 0,
+                    'fiber': 0, 'sugar': 0, 'sodium': 2, 'potassium': 49,
+                    'calcium': 2, 'iron': 0, 'vitamin_c': 0,
+                    'organic_acid': 0.3, 'polyphenol': 120, 'caffeine': 40,
+                    'alkaloid': 0, 'tannin': 150})
+    iv = uq.interval_for(pt)
+    ok = all(iv[c][0] <= pt[c] <= iv[c][1] and 0 <= iv[c][0] and iv[c][1] <= 10
+             for c in m.target_cols)
+    rec('U-03', '不确定性', '区间包含点估计且裁剪至[0,10]', '全部满足',
+        f"苦{pt['bitter']}[{iv['bitter'][0]},{iv['bitter'][1]}]", ok)
+
+
 def test_ocr():
     from PIL import Image, ImageDraw, ImageFont
     import io
@@ -182,10 +272,10 @@ def test_ocr():
     print('OCR 解析结果:', parsed)
     checks = [('calories', 1500 / 4.184, 30), ('protein', 5.2, 1.0),
               ('fat', 8.1, 1.0), ('carbs', 20.3, 2.0), ('sodium', 450, 50)]
-    for k, exp, tol in checks:
+    for i, (k, exp, tol) in enumerate(checks, 1):
         got = parsed.get(k)
         ok = got is not None and abs(got - exp) <= tol
-        rec('O-' + k[:2].upper(), 'OCR', f'营养表字段 {k}',
+        rec(f'O-0{i}', 'OCR', f'营养表字段 {k}',
             f'{exp:.1f}+-{tol}', got, ok)
 
 
@@ -218,7 +308,7 @@ def test_api():
         f'{s} {d.get("taste")}', ok)
     s, d = api_get('/api/foods/search?q=苹果')
     rec('A-03', 'API', 'GET /api/foods/search 搜索', '200且结果>0',
-        f'{s} 命中{len(d.get("results", d if isinstance(d, list) else []))}',
+        f'{s} 命中{len(d.get("results", d.get("foods", [])))}',
         s == 200)
     s, d = api_post('/api/recipe', {'items': [
         {'food_name': '苦瓜', 'grams': 150},
@@ -242,6 +332,10 @@ if __name__ == '__main__':
     test_latency(model)
     test_design(model)
     test_interactions(model)
+    test_golden(model)
+    test_external(model)
+    test_recipes(model)
+    test_uncertainty(model)
     try:
         test_ocr()
     except Exception as e:
