@@ -502,13 +502,18 @@ elif page.startswith('🧭'):
         if all(v <= 0 for v in target.values()):
             st.warning('请至少为一个味觉维度设置非零目标')
         else:
-            with st.spinner('正在搜索数万种「食材组合 × 配比」并精修...'):
-                mode_arg = 'meal' if mode == '饮食搭配' else 'product'
-                _res = design_recipes(MODEL, DF, target,
-                                      total_grams=int(total_g), scenario=scenario,
-                                      low_sodium=low_sodium, low_sugar=low_sugar,
-                                      mode=mode_arg, n_results=3)
-            st.session_state['design_results'] = (dict(target), scenario, mode, _res)
+            try:
+                with st.spinner('正在搜索数万种「食材组合 × 配比」并精修...'):
+                    mode_arg = 'meal' if mode == '饮食搭配' else 'product'
+                    _res = design_recipes(MODEL, DF, target,
+                                          total_grams=int(total_g), scenario=scenario,
+                                          low_sodium=low_sodium, low_sugar=low_sugar,
+                                          mode=mode_arg, n_results=3)
+                st.session_state['design_results'] = (dict(target), scenario, mode, _res)
+            except Exception as _e:
+                import traceback as _tb
+                st.error('设计过程出现异常，请调整参数后重试。')
+                st.code(f'{type(_e).__name__}: {_e}\n\n{_tb.format_exc()}')
 
     if 'design_results' in st.session_state:
         _tgt, _sc, _mode, _res = st.session_state['design_results']
