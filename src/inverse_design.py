@@ -60,6 +60,20 @@ SCENARIOS = {
 }
 
 
+# 需烹饪的主料类别: 含其中任一食材则归为"需烹饪食谱", 否则为"生食/即食搭配"
+# (味觉预测基于原料营养加和, 未建模烹饪带来的风味变化, 仅用于诚实标注, 不影响预测值)
+COOK_NEEDED_CATS = {'主食', '肉禽水产', '蔬菜菌藻'}
+
+# 搭配冲突规则(与配方分析页一致, 化学/烹饪依据):
+# 血制品/内脏×水果(铁+蛋白与有机酸/单宁结合产腥涩)、
+# 强酸×未发酵乳(酪蛋白酸变性凝结)、刺激性香辛料×高甜(极少见)
+CONFLICT_OFFAL = {'猪血', '猪肝', '鸡肝'}
+CONFLICT_STRONG_ACID = {'柠檬', '山楂', '食醋', '柠檬水'}
+CONFLICT_RAW_DAIRY = {'牛奶', '奶油', '奶粉'}
+CONFLICT_PUNGENT = {'大蒜', '生姜', '辣椒', '洋葱', '韭菜', '小葱', '花椒',
+                    '孜然', '黑胡椒', '白胡椒', '辣椒粉', '咖喱粉', '姜黄粉', '芥末酱'}
+
+
 class InverseDesigner:
     """逆向配方设计器"""
 
@@ -79,6 +93,9 @@ class InverseDesigner:
         self.is_added_sugar = np.isin(self.names, ['白糖', '蜂蜜'])
         # 类别编码数组, 用于类别一致性罚分
         self.cat_arr = np.array(self.cats)
+        self.name_arr = np.array(self.names)
+        # 甜味强度(用于"香辛料×高甜"冲突检测, 与配方分析页一致)
+        self.sweet_arr = self.df['sweet'].to_numpy(dtype=float) if 'sweet' in self.df.columns else np.zeros(self.n)
 
     # ---------------- 批量预测 ----------------
     def _predict_batch(self, X):
@@ -90,8 +107,12 @@ class InverseDesigner:
         mixed = (w[:, :, None] * self.X[idx]).sum(axis=1)
         return mixed / np.maximum(w.sum(axis=1, keepdims=True), 1e-9)
 
-    def _score(self, pred, mix, idx, w, target, low_sodium, low_sugar, cond_cap):
-        """目标距离 + 约束罚分(仅用于排序, 不用于展示)"""
+    def _score(self, pred, mix, idx, w, target, low_sodium, low_sugar,
+               cond_cap, mode='product'):
+        """目标距离 + 约束罚分(仅用于排序, 不用于展示)
+        mode='product': 食品设计(单一成品), 施加类别一致性罚分
+        mode='meal':    饮食搭配(一餐组合), 放宽类别一致性, 仅保留冲突罚分
+        """
         d = np.sqrt(((pred - target) ** 2).sum(axis=1))
         pen = np.zeros(len(d))
         if low_sodium:
@@ -108,12 +129,29 @@ class InverseDesigner:
         if cond_cap is not None:
             cond_share = (w * self.is_cond[idx]).sum(axis=1)
             pen += (np.maximum(0.0, cond_share - cond_cap) / cond_cap) ** 2 * 6.0
-        # 类别一致性: 避免"水果+蔬菜"或"水果+主食"等不合理混搭
+
+        # --- 搭配冲突罚分(两种模式都生效, 化学/烹饪依据) ---
+        names_m = self.name_arr[idx]  # (M,k)
+        has_offal = np.isin(names_m, list(CONFLICT_OFFAL)).sum(axis=1) > 0
         has_fruit = np.isin(self.cat_arr[idx], ['水果']).sum(axis=1) > 0
-        has_veg = np.isin(self.cat_arr[idx], ['蔬菜菌藻']).sum(axis=1) > 0
-        has_staple = np.isin(self.cat_arr[idx], ['主食']).sum(axis=1) > 0
-        pen += (has_fruit & has_veg).astype(float) * 6.0
-        pen += (has_fruit & has_staple).astype(float) * 6.0
+        has_acid = np.isin(names_m, list(CONFLICT_STRONG_ACID)).sum(axis=1) > 0
+        has_raw_dairy = np.isin(names_m, list(CONFLICT_RAW_DAIRY)).sum(axis=1) > 0
+        has_pungent = np.isin(names_m, list(CONFLICT_PUNGENT)).sum(axis=1) > 0
+        # 高甜: 甜味强度>=6 且非香辛料(与配方分析页一致)
+        sweet_m = self.sweet_arr[idx]
+        high_sweet = ((sweet_m >= 6)
+                      & ~np.isin(names_m, list(CONFLICT_PUNGENT))).sum(axis=1) > 0
+        pen += (has_offal & has_fruit).astype(float) * 15.0
+        pen += (has_acid & has_raw_dairy).astype(float) * 10.0
+        pen += (has_pungent & high_sweet).astype(float) * 15.0
+
+        # --- 类别一致性(仅食品设计模式): 避免"水果+蔬菜"或"水果+主食"
+        # 等跨风味方向混搭成单一成品; 饮食搭配模式允许一餐内多元组合 ---
+        if mode == 'product':
+            has_veg = np.isin(self.cat_arr[idx], ['蔬菜菌藻']).sum(axis=1) > 0
+            has_staple = np.isin(self.cat_arr[idx], ['主食']).sum(axis=1) > 0
+            pen += (has_fruit & has_veg).astype(float) * 6.0
+            pen += (has_fruit & has_staple).astype(float) * 6.0
         return d + pen, d
 
     # ---------------- 搜索 ----------------
@@ -124,14 +162,14 @@ class InverseDesigner:
         return pool[order], w
 
     def _refine_batch(self, rng, idx, w, target, low_sodium, low_sugar,
-                      cond_cap, iters=30):
+                      cond_cap, mode='product', iters=30):
         """整组候选并行配比扰动精修(每次迭代一次批量预测)"""
         m, k = w.shape
         best_w = w.copy()
         mix = self._mix(idx, best_w)
         pred = self._predict_batch(mix)
         best_s, best_d = self._score(pred, mix, idx, best_w, target,
-                                     low_sodium, low_sugar, cond_cap)
+                                     low_sodium, low_sugar, cond_cap, mode)
         rows = np.arange(m)
         for _ in range(iters):
             j = rng.integers(0, k, size=m)
@@ -142,7 +180,7 @@ class InverseDesigner:
             mix = self._mix(idx, new_w)
             pred = self._predict_batch(mix)
             s, dd = self._score(pred, mix, idx, new_w, target,
-                                low_sodium, low_sugar, cond_cap)
+                                low_sodium, low_sugar, cond_cap, mode)
             better = s < best_s - 1e-6
             best_w[better] = new_w[better]
             best_s = np.where(better, s, best_s)
@@ -160,10 +198,13 @@ class InverseDesigner:
     # ---------------- 主入口 ----------------
     def design(self, target, total_grams=300, k='auto', scenario='通用',
                low_sodium=False, low_sugar=False, n_results=3,
-               seed=42, per_k=8000, refine_top=40, refine_iters=30):
+               mode='product', seed=42, per_k=8000, refine_top=40,
+               refine_iters=30):
         """
         target: dict, 键为 sweet/sour/salty/bitter/umami/astringent, 值 0-10
         scenario: SCENARIOS 键名, 限定候选食材池保证组合合理
+        mode: 'product'=食品设计(单一成品, 施加类别一致性罚分)
+              'meal'=饮食搭配(一餐组合, 放宽类别一致性, 各食材可独立成菜)
         返回: list[dict], 按匹配度排序的 n_results 个多样化方案
         """
         rng = np.random.default_rng(seed)
@@ -199,11 +240,11 @@ class InverseDesigner:
             mix = self._mix(idx_k, w_k)
             pred = self._predict_batch(mix)
             score, _ = self._score(pred, mix, idx_k, w_k, tvec,
-                                   low_sodium, low_sugar, cond_cap)
+                                   low_sodium, low_sugar, cond_cap, mode)
             sel = np.argsort(score)[:refine_top]
             bw, bs, bd = self._refine_batch(
                 rng, idx_k[sel], w_k[sel], tvec, low_sodium, low_sugar,
-                cond_cap, iters=refine_iters)
+                cond_cap, mode=mode, iters=refine_iters)
             for r in range(len(sel)):
                 refined.append((float(bs[r]), float(bd[r]),
                                 idx_k[sel][r], bw[r]))
@@ -230,8 +271,15 @@ class InverseDesigner:
             w_final = grams.astype(float) / grams.sum()
             mix1 = self._mix(idx[None], w_final[None])[0]
             pred1 = self._predict_batch(mix1[None])[0]
+            item_cats = {self.cats[i] for i in idx.tolist()}
+            cook_needed = bool(item_cats & COOK_NEEDED_CATS)
+            if mode == 'meal':
+                style = '饮食搭配'
+            else:
+                style = '需烹饪食谱' if cook_needed else '生食/即食搭配'
             results.append({
                 'items': items,
+                'style': style,
                 'total_grams': round(float(grams.sum()), 1),
                 'predicted_taste': {c: round(float(pred1[j]), 2)
                                     for j, c in enumerate(self.model.target_cols)},

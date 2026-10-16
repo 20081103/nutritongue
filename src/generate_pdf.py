@@ -29,13 +29,19 @@ IMP, IMP_FEATS, IMP_TASTES = compute_importance(n_repeats=30)
 
 # ---------------------------------------------------------------- 字体
 try:
-    pdfmetrics.registerFont(TTFont('MSYH', 'C:/Windows/Fonts/msyh.ttc', subfontIndex=0))
-    pdfmetrics.registerFont(TTFont('MSYHB', 'C:/Windows/Fonts/msyhbd.ttc', subfontIndex=0))
-    FONT, FONT_B = 'MSYH', 'MSYHB'
+    # 官方模板格式: 正文宋体, 标题黑体(粗体)
+    pdfmetrics.registerFont(TTFont('SimSun', 'C:/Windows/Fonts/simsun.ttc', subfontIndex=0))
+    pdfmetrics.registerFont(TTFont('SimHei', 'C:/Windows/Fonts/simhei.ttf'))
+    FONT, FONT_B = 'SimSun', 'SimHei'
 except Exception:
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
-    FONT = FONT_B = 'STSong-Light'
+    try:
+        pdfmetrics.registerFont(TTFont('MSYH', 'C:/Windows/Fonts/msyh.ttc', subfontIndex=0))
+        pdfmetrics.registerFont(TTFont('MSYHB', 'C:/Windows/Fonts/msyhbd.ttc', subfontIndex=0))
+        FONT, FONT_B = 'MSYH', 'MSYHB'
+    except Exception:
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+        FONT = FONT_B = 'STSong-Light'
 
 # ---------------------------------------------------------------- 颜色
 ORANGE = HexColor('#f97316')
@@ -63,18 +69,18 @@ ss['cover_meta'] = ParagraphStyle('cover_meta', fontName=FONT, fontSize=11, lead
                                   textColor=DARK, alignment=TA_CENTER)
 ss['h1'] = ParagraphStyle('h1', fontName=FONT_B, fontSize=16, leading=26,
                           textColor=ORANGE, spaceBefore=14, spaceAfter=8)
-ss['h2'] = ParagraphStyle('h2', fontName=FONT_B, fontSize=12.5, leading=20,
+ss['h2'] = ParagraphStyle('h2', fontName=FONT_B, fontSize=14, leading=22,
                           textColor=DARK, spaceBefore=8, spaceAfter=4)
-ss['body'] = ParagraphStyle('body', fontName=FONT, fontSize=10.5, leading=19,
+ss['body'] = ParagraphStyle('body', fontName=FONT, fontSize=12, leading=17,
                             textColor=DARK, alignment=TA_JUSTIFY, spaceAfter=5,
-                            firstLineIndent=21)
+                            firstLineIndent=24)
 ss['body_ni'] = ParagraphStyle('body_ni', parent=ss['body'], firstLineIndent=0)
-ss['bullet'] = ParagraphStyle('bullet', fontName=FONT, fontSize=10.5, leading=18,
+ss['bullet'] = ParagraphStyle('bullet', fontName=FONT, fontSize=12, leading=17,
                               textColor=DARK, leftIndent=16, spaceAfter=3)
 ss['small'] = ParagraphStyle('small', fontName=FONT, fontSize=9, leading=14,
                              textColor=GRAY)
-ss['code'] = ParagraphStyle('code', fontName='Courier', fontSize=8.2,
-                            leading=11, textColor=DARK,
+ss['code'] = ParagraphStyle('code', fontName=FONT, fontSize=9,
+                            leading=12.5, textColor=DARK,
                             backColor=HexColor('#f6f8fa'), leftIndent=8,
                             rightIndent=8, spaceBefore=2, spaceAfter=2)
 ss['table_h'] = ParagraphStyle('table_h', fontName=FONT_B, fontSize=10, leading=14,
@@ -90,10 +96,19 @@ def P(text, style='body'):
 
 
 def H(num, text):
-    return P(f'{num}　{text}', 'h1')
+    """标题: '一、'/'附录A' 为一级(三号粗), '1.1' 为二级(四号粗); 并登记目录"""
+    lvl = 1 if ('.' in num) else 0
+    p = P(f'{num}　{text}', 'h2' if lvl else 'h1')
+    p._toc = (lvl, f'{num}　{text}')
+    return p
 
 
 def std_table(data, col_widths, header_bg=ORANGE, zebra=True):
+    # 页宽自适应: 模板页边距左右3cm, 可用宽15cm, 超宽表格等比收缩
+    avail = 15 * cm
+    total = sum(col_widths)
+    if total > avail:
+        col_widths = [w * avail / total for w in col_widths]
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
     style = [
         ('BACKGROUND', (0, 0), (-1, 0), header_bg),
@@ -114,7 +129,7 @@ def std_table(data, col_widths, header_bg=ORANGE, zebra=True):
 
 # ---------------------------------------------------------------- 图表
 def r2_bar_chart():
-    d = Drawing(450, 230)
+    d = Drawing(425, 230)
     bc = VerticalBarChart()
     bc.x, bc.y = 42, 30
     bc.height, bc.width = 175, 380
@@ -135,13 +150,13 @@ def r2_bar_chart():
     bc.barLabels.dx = 0
     bc.barLabels.dy = 4
     d.add(bc)
-    d.add(String(225, 215, '六维味觉留出测试 R2', fontName=FONT_B, fontSize=11,
+    d.add(String(212, 215, '六维味觉留出测试 R2', fontName=FONT_B, fontSize=11,
                  textAnchor='middle', fillColor=DARK))
     return d
 
 
 def compare_chart():
-    d = Drawing(450, 230)
+    d = Drawing(425, 230)
     bc = VerticalBarChart()
     bc.x, bc.y = 42, 30
     bc.height, bc.width = 175, 380
@@ -158,7 +173,7 @@ def compare_chart():
     bc.bars[1].fillColor = ORANGE
     bc.barWidth = 8
     d.add(bc)
-    d.add(String(225, 215, '13特征(灰) vs 16特征(橙) 各味觉 R2 对比', fontName=FONT_B,
+    d.add(String(212, 215, '13特征(灰) vs 16特征(橙) 各味觉 R2 对比', fontName=FONT_B,
                  fontSize=11, textAnchor='middle', fillColor=DARK))
     return d
 
@@ -201,13 +216,13 @@ def importance_heatmap():
 
 def arch_diagram():
     """系统架构: 感知层 -> 服务层 -> 应用层"""
-    d = Drawing(470, 108)
+    d = Drawing(425, 108)
     layers = [
         ('感知层(数据输入)', ['营养成分表拍照OCR', '手动输入16项指标', '281种食品数据库']),
         ('服务层(味觉计算)', ['FastAPI 标准接口', 'AI模型推理引擎', '营养分析与健康评分']),
         ('应用层(价值交付)', ['Streamlit Web应用', '配方/对比/预测', '第三方系统集成']),
     ]
-    bw, bh, gap = 132, 88, 32
+    bw, bh, gap = 125, 88, 21
     for k, (title, items) in enumerate(layers):
         x = 4 + k * (bw + gap)
         d.add(Rect(x, 8, bw, bh, rx=8, ry=8,
@@ -237,9 +252,10 @@ def on_page(canvas, doc):
         canvas.rect(0, A4[1] - 8, A4[0], 8, fill=1, stroke=0)
         canvas.setFont(FONT, 8)
         canvas.setFillColor(GRAY)
-        canvas.drawString(2 * cm, 1.1 * cm,
+        canvas.drawString(doc.leftMargin, 1.5 * cm,
                           '味析 NutriTongue - AI虚拟电子舌 技术方案')
-        canvas.drawRightString(A4[0] - 2 * cm, 1.1 * cm, f'第 {doc.page} 页')
+        canvas.drawRightString(A4[0] - doc.rightMargin, 1.5 * cm,
+                               f'第 {doc.page} 页')
     canvas.restoreState()
 
 
@@ -255,12 +271,14 @@ story.append(Spacer(1, 1.4 * cm))
 cover_tbl = Table([
     ['参赛赛事', '2026第八届全球校园人工智能算法精英大赛 · 算法创新赛'],
     ['参赛团队', '味来科技'],
+    ['参赛编号', 'AIC-2026-45228632'],
     ['参赛赛道', '赛题2: AI+软件创新'],
     ['作品类型', '纯软件方案(零硬件 · 零实验条件依赖)'],
     ['数据规模', '9大类 281 种食品 · 16维输入特征 · 6维味觉标注'],
     ['核心模型', '多输出梯度提升回归 + 数据增强 + 样本加权 + 五折交叉验证'],
     ['整体精度', '留出测试 R2 = 0.780 / 五折交叉验证 R2 = 0.810'],
     ['系统形态', 'Streamlit Web应用 + FastAPI 味觉计算API + 营养成分表OCR识别'],
+    ['在线体验', 'https://nutritongue.streamlit.app (Streamlit Cloud 永久部署, 首次访问约30秒唤醒)'],
 ], colWidths=[3.2 * cm, 11.5 * cm])
 cover_tbl.setStyle(TableStyle([
     ('FONTNAME', (0, 0), (-1, -1), FONT),
@@ -275,14 +293,50 @@ cover_tbl.setStyle(TableStyle([
     ('LEFTPADDING', (0, 0), (-1, -1), 10),
 ]))
 story.append(cover_tbl)
-story.append(Spacer(1, 2.2 * cm))
+story.append(Spacer(1, 1.8 * cm))
+story.append(P('2026 年 10 月', 'cover_meta'))
+story.append(Spacer(1, 0.4 * cm))
 story.append(P('关键词: 电子舌 · 味觉预测 · 机器学习 · 梯度提升树 · 营养评价 · 风味化学',
                'cover_meta'))
 story.append(PageBreak())
 
-# 一 项目背景
-story.append(H('一、', '项目背景与问题定义'))
-story.append(H('1.1', '电子舌技术及其硬件门槛'))
+# ---------------------------------------------------------------- 目录页
+from reportlab.platypus.tableofcontents import TableOfContents  # noqa: E402
+
+story.append(Paragraph('目　录', ParagraphStyle(
+    'toc_title', fontName=FONT_B, fontSize=22, leading=36,
+    alignment=TA_CENTER, spaceAfter=16)))
+_toc = TableOfContents()
+_toc.levelStyles = [
+    ParagraphStyle('toc_l0', fontName=FONT_B, fontSize=12, leading=22,
+                   leftIndent=4, textColor=DARK),
+    ParagraphStyle('toc_l1', fontName=FONT, fontSize=10.5, leading=17,
+                   leftIndent=26, textColor=DARK),
+]
+story.append(_toc)
+story.append(PageBreak())
+
+# ---------------------------------------------------------------- 作品简介(模板独立部分, <=300字)
+_ip = P('作品简介', 'h1')
+_ip._toc = (0, '作品简介')
+story.append(_ip)
+story.append(P('味析NutriTongue是一款纯软件AI虚拟电子舌：无需任何传感器，'
+               '输入食品16项营养与风味化学指标，多输出梯度提升模型即可预测'
+               '甜、酸、咸、苦、鲜、涩六维味觉强度（281种食品自建库，'
+               '测试集R2=0.780，交叉验证0.810）。系统覆盖"查、尝、配、反设计"'
+               '完整链路：食品查询、拍照OCR识别营养表、配方风味交互分析，'
+               '并可将模型反向使用——输入目标味觉，一秒内搜索出可烹饪配方，'
+               '支持低钠低糖约束。'))
+story.append(P('模型经归因验证符合风味化学规律，预测附带80%保形置信区间，'
+               '并通过32项文献锚点与20道真实菜谱外部验证；能力封装为开放API。'
+               '面向低糖低钠配方研发场景，已完成22人真实试用'
+               '（主导味觉一致率82.5%）。让AI像人一样尝味道，'
+               '用数据为健康饮食决策服务。'))
+story.append(PageBreak())
+
+# 一 项目概述
+story.append(H('一、', '项目概述'))
+story.append(H('1.1', '项目背景与意义: 电子舌技术及其硬件门槛'))
 story.append(P('电子舌(E-tongue)是一类模拟人类味觉系统的分析仪器，通过物理电化学传感器阵列'
                '获取液体样本的响应信号，再经模式识别算法区分甜、酸、咸、苦、鲜等基本味觉。'
                '传统电子舌存在三方面门槛: 一是传感器阵列价格昂贵、维护成本高；'
@@ -296,7 +350,7 @@ story.append(P('现代食品化学已明确: 味觉感受由食品中的具体�
                '收敛作用有关。既然味觉有其物质基础，就可以绕开物理传感器，'
                '直接学习「可测量营养/化学指标 → 六维味觉强度」的映射关系，'
                '用纯软件方式实现电子舌的核心功能。'))
-story.append(H('1.3', '作品定义'))
+story.append(H('1.3', '赛题方向定位与作品定义'))
 story.append(P('味析(NutriTongue)是一款AI虚拟电子舌系统: 输入一份食品(或任意食材配方)'
                '每100克的16项营养与化学指标，系统即可输出该食品在甜、酸、咸、苦、鲜、涩'
                '六个维度上的味觉强度(0-10分)，并同步给出营养健康评分、风味文字描述与'
@@ -435,12 +489,17 @@ story.append(P('正向模型解决「给配方、测味道」，逆向设计解�
                '(钠/糖超限、纯油脂类占比>25%、调味品占比超场景上限)排序，'
                '再对前列候选做批量坐标扰动精修，最后按食材重合度做多样性挑选，'
                '输出Top-3方案。全流程无需额外训练，随机种子固定可复现，'
-               '单次设计约0.3秒。'))
-story.append(P('典型案例: 目标「甜8酸2」饮品场景，系统输出「哈密瓜105.0g+苹果86.4g+梨60.5g+白糖48.1g」，'
-               '预测甜8.23/酸2.13，匹配度91.4%；目标「咸6鲜7」并开启低钠约束的'
-               '菜肴场景，输出「鲈鱼205g+米饭95g」，钠99mg/100g达标，匹配度87.8%。'
+               '单次设计约0.6秒。'))
+story.append(P('典型案例: 目标「甜8酸2」饮品场景，系统输出「苹果汁191.9g+哈密瓜67.4g+白糖40.7g」，'
+               '预测甜8.09/酸2.94，匹配度90.7%；目标「咸6鲜7」并开启低钠约束的'
+               '菜肴场景，输出「白粥198.5g+三文鱼101.5g」，钠119mg/100g达标，匹配度87.7%。'
                '食材池自动排除可乐、薯片等预包装成品，仅保留可用于烹饪调配的基础原料，'
                '确保输出配方具备实际可操作性。'
+               '每条方案可由用户选择「食品设计」或「饮食搭配」输出类型: '
+               '前者输出单一成品(施加类别一致性罚分, 避免跨风味方向混搭), '
+               '后者输出一餐内可独立成菜的食材组合(放宽类别一致性, 仅保留化学/烹饪依据的冲突罚分); '
+               '味觉预测基于原料营养按克数加和计算，未建模烹饪过程(美拉德反应、焦糖化、蛋白质变性等)对风味的'
+               '影响，生食类方案预测可信度较高，需烹饪类方案作为食材选型与配比参考。'
                '逆向设计与正向预测构成「分析-创造」能力闭环，'
                '直接对应食品研发中「低糖低钠配方定向设计」的真实工作流。'))
 story.append(H('3.7', '风味交互修正层: 超越线性混合'))
@@ -581,6 +640,52 @@ story.append(P('主导味觉不一致的 11 条记录中，5 条为复合食品�
                '试用者将「低糖低钠配方研发」选为第一大应用场景(12/22)，与本作品的应用定位'
                '相互印证; 总体满意度 8.05/10。详细数据见《用户试用反馈报告》及附带的 '
                'survey_analysis.json(可复算)。'))
+story.append(H('4.7', '外部效度验证: 文献锚点与真实菜谱'))
+story.append(P('留出测试与交叉验证属于内部效度，证明模型复现了训练标签的统计规律；'
+               '而「模型预测是否符合独立于训练数据的感官科学共识」需要外部效度检验。'
+               '为此设计两类独立于训练集的验证(src/external_validation.py 与 '
+               'src/recipe_validation.py，随测试套件一键复算)。'))
+story.append(P('(a) 文献锚点验证: 选取 32 个有明确文献/标准共识的感官锚点——'
+               'A类为 ISO 8586 与 GB/T 12310 感官分析标准规定的五大基本味标准参照物'
+               '(蔗糖-甜、氯化钠-咸、柠檬酸-酸、咖啡因-苦、谷氨酸钠-鲜等 6 项)，'
+               'B类为食品感官科学教材与风味化学研究中的 26 项公认结论'
+               '(海带谷氨酸为鲜味发现之源、香菇鸟苷酸、柿单宁涩感、啤酒花苦味、'
+               '菠菜草酸涩感等)——检验模型预测值是否落入文献区间。'
+               '实测 32/32 全部命中(100%)，A类标准参照物 6/6 全中，平均越界偏差 0.0。'))
+story.append(P('(b) 真实菜谱一致性验证: 选取 20 道烹饪界主导味型有明确共识的经典菜谱'
+               '(冰糖炖梨、糖醋排骨、咸菜白粥、香菇炖鸡汤、凉拌苦瓜等)，'
+               '按真实用料配比折算为每100g营养成分，经正向模型+风味交互修正层预测六维味觉，'
+               '检验主导味觉与烹饪共识的一致性。实测期望味型落入预测前 2 位的比例为 '
+               '20/20(100%)，落入第 1 位为 17/20(85%)；未居首位的 3 道'
+               '(糖醋排骨、咸蛋瘦肉粥、苦瓜炒蛋)预测首位均为鲜味、期望味型均列第二，'
+               '属相邻味型排序差异，无系统性偏差。'))
+story.append(P('局限性声明: 锚点区间取自独立于本数据库标签体系的文献共识，'
+               '但训练标签标注时同样参考了领域共识，故上述验证检验的是'
+               '「模型是否稳定复现领域共识而非过拟合标签噪声」，'
+               '属于外部效度的必要非充分证据。'))
+story.append(H('4.8', '不确定性量化: 交叉保形预测区间'))
+story.append(P('点估计之外，系统为每条预测附加 80% 预测区间，回答「预测值有多可信」。'
+               '方法采用交叉保形预测(Cross-Conformal Prediction): 以主模型 5 折交叉的'
+               '折外(out-of-fold)预测残差为校准集，按保形分位数 ceil((n+1)q)/n 取'
+               '各味觉维度绝对残差分位数作为半宽，区间 = 点估计 ± 半宽。'
+               '相比分位数回归，保形预测具备分布无关的有限样本覆盖保证'
+               '(校准集与新样本可交换时，覆盖率不低于目标置信水平)，'
+               '且区间恒以点估计为中心，不与任何已发布的点预测数字矛盾。'))
+uq_tbl = [
+    [P('指标', 'table_h'), P('数值', 'table_h')],
+    [P('目标置信度 / 校准集规模', 'table_l'), P('80% / 281 条(5 折折外)', 'table_l')],
+    [P('实测覆盖率(各维均值)', 'table_l'), P('0.806(分维 0.804~0.808)', 'table_l')],
+    [P('各维区间半宽', 'table_l'),
+     P('甜 1.038 / 酸 0.788 / 咸 0.823 / 苦 0.749 / 鲜 1.144 / 涩 1.011', 'table_l')],
+    [P('平均区间宽度(0-10 量表)', 'table_l'), P('1.851', 'table_l')],
+]
+story.append(std_table(uq_tbl, [5.4 * cm, 9.3 * cm]))
+story.append(Spacer(1, 3 * mm))
+story.append(P('应用价值: 区间已集成至 Web 应用(配方分析页与味觉预测页的折叠面板)与 '
+               'API(/api/taste、/api/recipe 响应新增 taste_interval_80 字段)。'
+               '窄区间样本(如苦 ±0.749)可直接用于配方筛选；宽区间样本提示人工复核，'
+               '为低糖低钠配方研发提供「何时可信、何时存疑」的决策依据。'
+               '示例: 黑咖啡苦味点估计 7.77，80% 区间 [7.02, 8.52]。'))
 
 # 五 应用
 story.append(H('五、', '应用实现'))
@@ -621,13 +726,13 @@ story.append(Spacer(1, 3 * mm))
 api_tbl = [
     [P('接口', 'table_h'), P('方法', 'table_h'), P('功能', 'table_h')],
     [P('/api/taste', 'table_l'), P('POST', 'table_c'),
-     P('输入16项营养化学指标，输出六维味觉预测、风味描述与搭配建议', 'table_l')],
+     P('输入16项营养化学指标，输出六维味觉预测、80%预测区间、风味描述与搭配建议', 'table_l')],
     [P('/api/analyze', 'table_l'), P('POST', 'table_c'),
      P('附加健康评分、五级健康等级与各营养素每日推荐占比的完整分析', 'table_l')],
     [P('/api/foods /search /{name}', 'table_l'), P('GET', 'table_c'),
      P('食品库检索: 全量列表(可按类别过滤)、关键词搜索、单食品营养与味觉详情', 'table_l')],
     [P('/api/recipe', 'table_l'), P('POST', 'table_c'),
-     P('多食材按克数加权混合，预测整道菜/饮品的味觉与健康评分', 'table_l')],
+     P('多食材按克数加权混合，预测整道菜/饮品的味觉(含80%预测区间)与健康评分', 'table_l')],
     [P('/api/design', 'table_l'), P('POST', 'table_c'),
      P('逆向配方设计: 目标味觉+约束条件反向搜索食材组合与克数，返回多样化方案', 'table_l')],
     [P('/api/ocr', 'table_l'), P('POST', 'table_c'),
@@ -660,9 +765,13 @@ story.append(P('系统为纯CPU应用，无需GPU与外部服务，模型在服�
                '(约7秒)，支持三种部署方式: 本地 pip install -r requirements.txt 后'
                '以 streamlit run src/app.py 启动Web应用、以 uvicorn 启动API服务；'
                '或通过随附 Dockerfile 构建单容器镜像，同时暴露Web(8501)与API(8001)双端口。'
+               '系统已永久部署于 Streamlit Community Cloud, 访问地址 '
+               'https://nutritongue.streamlit.app, 无需安装即可体验全部功能'
+               '(免费版闲置休眠, 首次访问约30-60秒唤醒; 云端OCR自动降级为手动输入)。'
                '项目提供可一键复现的专项测试套件 src/run_tests.py，覆盖模型性能、'
-               '边界规则、典型食品常识一致性、预测延迟(24ms)、OCR端到端解析与API接口'
-               '共30项用例，当前全部通过(详见随附《测试报告》)。'))
+               '边界规则、典型食品常识一致性、预测延迟(1.6ms)、OCR端到端解析、API接口、'
+               '文献锚点/真实菜谱外部效度、不确定性量化与演示数字冻结守卫'
+               '共43项用例，当前全部通过(详见随附《测试报告》)。'))
 story.append(P('技术栈: Python 3.13 · pandas · NumPy · scikit-learn · Streamlit · Plotly · '
                'FastAPI · RapidOCR · ReportLab。项目包含数据库CSV、核心算法模块、API服务、'
                'Web应用、本技术方案与requirements清单，'
@@ -701,6 +810,9 @@ for t in [
     '机理与数据双重可解释: 排列重要性归因显示每个味觉维度的主导特征恰为其化学本质'
     '(甜←糖分1.34、咸←钠1.51、酸←有机酸1.04、鲜←蛋白质1.02、'
     '苦←生物碱/单宁/咖啡因)，证明模型学到的是风味化学规律而非统计噪声；',
+    '可信赖预测: 交叉保形预测为每条输出附带具备有限样本覆盖保证的80%预测区间，'
+    '配合32项文献锚点、20道真实菜谱两重外部效度验证与演示数字冻结守卫测试，'
+    '把「精度指标」升级为「何时可信、何时存疑」的可决策信息；',
     '服务化与多模态输入: 模型封装为FastAPI标准接口对外开放，支持营养成分表拍照OCR识别，'
     '未知食品拍一下就能尝，从演示系统升级为可被集成的味觉计算服务；',
     '严谨的实验设计: 类别分层留出 + 5折交叉验证 + 训练集定向数据增强，'
@@ -790,7 +902,7 @@ def _fbox(d, x, y, w, h, lines, fill, fs=8.0, bold=False):
 
 
 def arch_diagram():
-    d = Drawing(450, 205)
+    d = Drawing(425, 205)
     layers = [
         ('用户层', ['浏览器(Web交互界面)', '第三方系统(HTTP API)', '用户试用问卷'],
          162, 30, HexColor('#fdf2f8')),
@@ -806,26 +918,26 @@ def arch_diagram():
     for name, lines, y, h, color in layers:
         d.add(String(50, y + h / 2 - 3, name, fontName=FONT_B, fontSize=9.5,
                      textAnchor='end', fillColor=ORANGE))
-        _fbox(d, 58, y, 384, h, lines, color, fs=8.0)
+        _fbox(d, 58, y, 360, h, lines, color, fs=8.0)
     for y in (152, 112, 54):
-        d.add(Line(250, y, 250, y + 10, strokeColor=GRAY, strokeWidth=1.2))
-    d.add(String(225, 195, '系统总体架构图(四层)', fontName=FONT_B, fontSize=10.5,
+        d.add(Line(240, y, 240, y + 10, strokeColor=GRAY, strokeWidth=1.2))
+    d.add(String(212, 195, '系统总体架构图(四层)', fontName=FONT_B, fontSize=10.5,
                  textAnchor='middle', fillColor=DARK))
     return d
 
 
 def flow_diagram(title, steps, note):
-    d = Drawing(450, 88)
-    d.add(String(225, 76, title, fontName=FONT_B, fontSize=10.5,
+    d = Drawing(425, 88)
+    d.add(String(212, 76, title, fontName=FONT_B, fontSize=10.5,
                  textAnchor='middle', fillColor=DARK))
-    bw, gap, y = 66, 5, 34
+    bw, gap, y = 64, 5, 34
     for i, s in enumerate(steps):
         x = 6 + i * (bw + gap)
         _fbox(d, x, y, bw, 26, [s], LIGHT, fs=7.5)
         if i < len(steps) - 1:
             d.add(Line(x + bw, y + 13, x + bw + gap, y + 13,
                        strokeColor=ORANGE, strokeWidth=1.4))
-    d.add(String(225, 14, note, fontName=FONT, fontSize=8.5,
+    d.add(String(212, 14, note, fontName=FONT, fontSize=8.5,
                  textAnchor='middle', fillColor=GRAY))
     return d
 
@@ -837,9 +949,9 @@ story.append(P('B.2 模块设计(关键设计参数)', 'h2'))
 mod_rows = [['模块', '源文件', '职责', '关键设计参数']]
 for r in [
     ['味觉预测核心', 'taste_model.py', '16 特征到 6 维味觉的多输出回归;风味交互修正;健康与综合评分',
-     'GradientBoosting(100 树/深度 3/lr 0.1);苦味样本加权 2.5/3.0;高斯噪声增强 x4'],
+     'GradientBoosting(200 树/lr 0.05/subsample 0.8);苦味样本加权 2.5/3.0;高斯噪声增强 x4'],
     ['逆向设计', 'inverse_design.py', '目标味觉到配方的约束优化搜索',
-     '2 万组采样+Top200 精修;原料白名单(排除 39 种预包装成品);添加糖占比<=20%;随机种子固定'],
+     '2.4 万组采样(3 种组合数 x 8000)+Top120 精修(30 轮);原料白名单(排除 39 种预包装成品);添加糖占比<=20%;随机种子固定'],
     ['OCR 识别', 'nutrition_ocr.py', '营养成分表拍照识别为结构化营养字典',
      'RapidOCR(ONNX 推理);GB 28050 强制标识 1+4 顺序先验;千焦到千卡换算'],
     ['可解释性', 'feature_importance.py', '16 特征 x 6 味觉排列重要性归因', 'n_repeats=30'],
@@ -866,33 +978,41 @@ story.append(flow_diagram(
 # ================================================================ 附录C 测试数据
 story.append(H('附录C', '测试数据'))
 story.append(P('C.1 测试环境: Windows 11 / Python 3.13 / scikit-learn 1.x / '
-               '测试脚本 src/run_tests.py 一键执行,共 30 项断言式用例。', 'body_ni'))
+               '测试脚本 src/run_tests.py 一键执行,共 43 项断言式用例。', 'body_ni'))
 story.append(P('C.2 测试用例执行结果(原始记录):', 'h2'))
 test_rows = [['编号', '用例(期望)', '实测结果', '结论']]
 for r in [
     ['M-01', '留出测试整体 R2>=0.70', '0.780', 'PASS'],
     ['M-02', '5 折交叉验证整体 R2>=0.70', '0.8096', 'PASS'],
-    ['M-03', 'MAE<=0.70', '0.6153', 'PASS'],
+    ['M-03', 'MAE<=0.70', '0.6152', 'PASS'],
     ['M-04', '各味觉 R2 无低于 0.5 的失效维度', '最低=0.609(涩味)', 'PASS'],
     ['B-01', '全零输入(白水)判定无味', '六维输出全 0.0', 'PASS'],
-    ['B-02', '仅含糖 5g 时不误判无味', '甜味 5.67', 'PASS'],
+    ['B-02', '仅含糖 5g 时不误判无味', '甜味 5.65', 'PASS'],
     ['S-06', '绿茶主导味觉=苦味', '主导=苦味, MAE=0.04', 'PASS'],
-    ['S-07', '黑咖啡主导味觉=苦味', '主导=苦味, MAE=0.11', 'PASS'],
-    ['S-08', '苹果主导味觉=甜味', '主导=甜味, MAE=0.27', 'PASS'],
-    ['S-09', '食盐主导味觉=咸味', '主导=咸味, MAE=0.08', 'PASS'],
-    ['P-01', '单次味觉预测延迟', '0.7ms', 'PASS'],
-    ['D-01', '饮品场景食材池合规且匹配度>=85%', '91.4%(哈密瓜+苹果+梨)', 'PASS'],
-    ['D-02', '低钠约束下钠含量<=125mg/100g', '99mg/100g', 'PASS'],
+    ['S-07', '黑咖啡主导味觉=苦味', '主导=苦味, MAE=0.12', 'PASS'],
+    ['S-08', '苹果主导味觉=甜味', '主导=甜味, MAE=0.22', 'PASS'],
+    ['S-09', '食盐主导味觉=咸味', '主导=咸味, MAE=0.10', 'PASS'],
+    ['P-01', '单次味觉预测延迟', '1.6ms', 'PASS'],
+    ['D-01', '饮品场景食材池合规且匹配度>=85%', '90.7%(苹果汁+哈密瓜+白糖)', 'PASS'],
+    ['D-02', '低钠约束下钠含量<=125mg/100g', '108mg/100g', 'PASS'],
     ['D-03', '纯油脂类合计占比<=30%', '0%', 'PASS'],
     ['D-04', '同参数两次调用结果一致(种子固定)', '完全一致', 'PASS'],
-    ['D-05', '单次逆向设计耗时<10s', '0.3s', 'PASS'],
+    ['D-05', '单次逆向设计耗时<10s', '0.6s', 'PASS'],
     ['I-01', '苦瓜+白糖修正后苦味下降(甜苦拮抗)', '3.45 -> 2.22', 'PASS'],
     ['I-02', '高咸+鲜配方修正后鲜味不降(咸鲜协同)', '7.24 -> 8.54', 'PASS'],
-    ['I-03', '奶茶配方修正后涩味下降(蛋白-单宁沉淀)', '1.81 -> 1.79', 'PASS'],
+    ['I-03', '奶茶配方修正后涩味下降(蛋白-单宁沉淀)', '1.86 -> 1.84', 'PASS'],
+    ['G-01~05', '演示案例点预测冻结守卫(黑咖啡/牛奶/苦瓜+苹果/白粥+三文鱼)',
+     '与已发布材料数字逐值一致', 'PASS'],
+    ['E-01~03', '文献锚点外部效度(32锚点命中率>=75%, A类ISO/GB标准参照物全中)',
+     '命中32/32=100%, A类6/6, 平均越界偏差0.0', 'PASS'],
+    ['R-01~02', '真实菜谱一致性(20道top2>=80%, top1>=70%)',
+     'top2=20/20=100%, top1=17/20=85%', 'PASS'],
+    ['U-01~03', '不确定性量化(覆盖率0.75~0.90, 半宽<=1.5, 区间含点估计)',
+     '覆盖率0.806, 最大半宽1.144, 苦7.77[7.02,8.52]', 'PASS'],
     ['O-xx', 'OCR 营养表五字段识别(能量/蛋白质/脂肪/碳水/钠)',
      '358.51kcal、5.2g、8.1g、20.3g、450mg(5 项全对)', 'PASS'],
     ['A-01~06', 'API 六个端点(/、taste、search、recipe、foods、design)',
-     '全部 HTTP 200,design 匹配度 91.4%', 'PASS'],
+     '全部 HTTP 200,design 匹配度 90.7%', 'PASS'],
 ]:
     test_rows.append([r[0], Paragraph(r[1], ss['table_l']),
                       Paragraph(r[2], ss['table_l']), r[3]])
@@ -904,10 +1024,10 @@ perf_rows = [['指标', '数值', '统计口径'],
              ['5 折交叉验证 R2', '0.810', 'KFold(shuffle, seed=42)'],
              ['MAE / RMSE', '0.615 / 0.920', '六维平均'],
              ['分维 R2', '甜 0.860 / 酸 0.844 / 咸 0.883 / 苦 0.713 / 鲜 0.772 / 涩 0.609', '留出测试集'],
-             ['单次预测延迟', '0.7ms', '本机实测均值'],
-             ['逆向设计耗时', '约 0.3s', '2 万组采样+精修全程'],
-             ['模型训练耗时', '5.7s', '含数据增强与交叉验证'],
-             ['测试通过率', '30/30(100%)', 'run_tests.py 一键复算']]
+             ['单次预测延迟', '1.6ms', '本机实测均值'],
+             ['逆向设计耗时', '约 0.6s', '2 万组采样+精修全程'],
+             ['模型训练耗时', '10.3s', '含数据增强与交叉验证'],
+             ['测试通过率', '43/43(100%)', 'run_tests.py 一键复算']]
 perf_rows = [[Paragraph(c, ss['table_l']) if j == 2 else c for j, c in enumerate(row)]
              for row in perf_rows]
 story.append(std_table(perf_rows, [4.2 * cm, 7.2 * cm, 5.4 * cm]))
@@ -915,6 +1035,9 @@ story.append(Spacer(1, 2 * mm))
 story.append(P('C.4 数据简要分析:', 'h2'))
 story.append(P('模型可信度方面,交叉验证 R2(0.810)高于留出测试(0.780),说明模型未过拟合;'
                'S 系列样本主导味觉全部命中且 MAE<0.3,验证了对典型食品的判别能力。'
+               '外部效度方面,32 个文献锚点全部落入文献区间、20 道真实菜谱 top2 '
+               '一致率 100%,证明模型稳定复现领域感官共识而非过拟合标签噪声;'
+               '交叉保形区间实测覆盖率 0.806 与名义 0.80 吻合,不确定性量化可信。'
                '边界健壮性方面,全零输入正确返回无味、OCR 孤立毫克值按 GB 28050 顺序正确归属钠字段。'
                '工程可用性方面,预测亚毫秒、逆向设计亚秒、API 六端点全通,满足在线交互要求。'
                '全部用例可经 run_tests.py 一键复算,原始执行日志与性能数据如上。'))
@@ -924,8 +1047,8 @@ story.append(H('附录D', '佐证材料清单'))
 story.append(P('1. 用户使用证明: 《用户试用反馈报告》——22 名试用者(含 14 名食品专业)完成被试内测试,'
                '主导味觉一致率 82.5%,用户-预测六维相关系数 0.84,总体满意度 8.05/10;'
                '随附 22 份问卷原始统计数据(JSON)。详见提交材料 05-用户反馈/ 目录。', 'body_ni'))
-story.append(P('2. 检测佐证: 本方案附录 C 所列 30 项测试用例执行记录,'
-               '以及《测试报告》中 11 条改进记录(含实验对照与否决实验),'
+story.append(P('2. 检测佐证: 本方案附录 C 所列 43 项测试用例执行记录,'
+               '以及《测试报告》中 15 条改进记录(含实验对照与否决实验),'
                '均可经源码包内 run_tests.py、compare_algos.py 一键复算验证。', 'body_ni'))
 story.append(P('3. 说明: 本作品为在校学生竞赛作品,暂无专利证书与第三方检测报告。', 'body_ni'))
 
@@ -936,12 +1059,22 @@ story.append(P('味析 NutriTongue —— 让AI像人一样尝味道，用数据
                'subtitle'))
 
 # ---------------------------------------------------------------- 构建
-doc = BaseDocTemplate(str(OUT), pagesize=A4,
-                      leftMargin=2 * cm, rightMargin=2 * cm,
-                      topMargin=1.8 * cm, bottomMargin=1.8 * cm,
-                      title='味析NutriTongue技术方案', author='味来科技')
+class TplDoc(BaseDocTemplate):
+    """把 H() 登记的一/二级标题写入目录"""
+
+    def afterFlowable(self, fl):
+        if isinstance(fl, Paragraph) and hasattr(fl, '_toc'):
+            lvl, txt = fl._toc
+            self.notify('TOCEntry', (lvl, txt, self.page))
+
+
+# 官方模板页面设置: 上下2.5cm 左右3cm, 页眉页脚1.5cm, A4纵向
+doc = TplDoc(str(OUT), pagesize=A4,
+             leftMargin=3 * cm, rightMargin=3 * cm,
+             topMargin=2.5 * cm, bottomMargin=2.5 * cm,
+             title='味析NutriTongue技术方案', author='味来科技')
 frame = Frame(doc.leftMargin, doc.bottomMargin,
               doc.width, doc.height, id='normal')
 doc.addPageTemplates([PageTemplate(id='main', frames=frame, onPage=on_page)])
-doc.build(story)
+doc.multiBuild(story)
 print('PDF generated:', OUT)

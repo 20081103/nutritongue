@@ -18,6 +18,7 @@ from taste_model import (  # noqa: E402
     apply_taste_interactions,
 )
 from inverse_design import design_recipes  # noqa: E402
+from uncertainty import TasteUncertainty  # noqa: E402
 
 # ---------------------------------------------------------------- 路径与常量
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -89,6 +90,21 @@ def load_engine():
 DF, MODEL, METRICS = load_engine()
 ANALYZER = NutritionAnalyzer()
 EVALUATOR = FoodEvaluator()
+# 交叉保形预测区间(80%置信): 出厂校准半宽秒级装载, 为点预测附加可信度
+UQ = TasteUncertainty()
+
+
+def interval_panel(pred):
+    """预测区间展示面板(加法组件, 不改变任何既有展示)"""
+    iv = UQ.interval_for(pred)
+    with st.expander('📏 预测区间（80%置信 · 交叉保形预测）', expanded=False):
+        tbl = pd.DataFrame([{
+            '维度': TASTE_CN[k], '点预测': f'{pred[k]:.1f}',
+            '80%预测区间': f'{iv[k][0]:.1f} ~ {iv[k][1]:.1f}'}
+            for k in TASTE_ORDER])
+        st.dataframe(tbl, hide_index=True, use_container_width=True)
+        st.caption('区间越窄代表该维度预测越可信；由主模型5折交叉折外残差'
+                   '保形校准，覆盖率实测80.6%，区间恒以点预测为中心。')
 
 
 # ---------------------------------------------------------------- 绘图工具
@@ -385,6 +401,7 @@ elif page.startswith('🍲'):
                                         fill_color='rgba(236,72,153,0.30)'),
                             use_container_width=True)
             st.markdown(taste_tags(pred), unsafe_allow_html=True)
+            interval_panel(pred)
             if inter_notes:
                 st.caption('风味交互修正已生效：' + '；'.join(inter_notes))
             hs = ANALYZER.health_score(mix_dict)
@@ -466,7 +483,7 @@ elif page.startswith('🧭'):
             with tc[i]:
                 target[c] = st.slider(TASTE_CN[c], 0.0, 10.0,
                                       TGT_DEFAULT[c], 0.5, key=f'tgt_{c}')
-        o1, o2, o3, o4 = st.columns(4)
+        o1, o2, o3, o4, o5 = st.columns(5)
         with o1:
             scenario = st.selectbox('应用场景', ['通用', '饮品·甜品', '菜肴·主食'])
         with o2:
@@ -475,6 +492,10 @@ elif page.startswith('🧭'):
             low_sodium = st.checkbox('低钠（≤120mg/100g）')
         with o4:
             low_sugar = st.checkbox('低糖（≤5g/100g）')
+        with o5:
+            mode = st.selectbox('输出类型', ['食品设计', '饮食搭配'],
+                                help='食品设计=单一成品(如一道菜/一杯饮); '
+                                     '饮食搭配=一餐组合(各食材可独立成菜一起食用)')
         submitted = st.form_submit_button('🎯 开始设计', type='primary')
 
     if submitted:
@@ -482,25 +503,33 @@ elif page.startswith('🧭'):
             st.warning('请至少为一个味觉维度设置非零目标')
         else:
             with st.spinner('正在搜索数万种「食材组合 × 配比」并精修...'):
+                mode_arg = 'meal' if mode == '饮食搭配' else 'product'
                 _res = design_recipes(MODEL, DF, target,
                                       total_grams=int(total_g), scenario=scenario,
                                       low_sodium=low_sodium, low_sugar=low_sugar,
-                                      n_results=3)
-            st.session_state['design_results'] = (dict(target), scenario, _res)
+                                      mode=mode_arg, n_results=3)
+            st.session_state['design_results'] = (dict(target), scenario, mode, _res)
 
     if 'design_results' in st.session_state:
-        _tgt, _sc, _res = st.session_state['design_results']
+        _tgt, _sc, _mode, _res = st.session_state['design_results']
         st.markdown('---')
-        st.markdown(f'### 设计方案（{_sc}场景）')
+        st.markdown(f'### 设计方案（{_sc} · {_mode}）')
         cols = st.columns(3)
         for i, r in enumerate(_res):
             with cols[i]:
                 items_html = '<br>'.join(
                     f"· {it['name']} <b>{it['grams']}g</b>" for it in r['items'])
+                if r['style'] == '饮食搭配':
+                    style_tag = '�️ 饮食搭配'
+                elif r['style'] == '需烹饪食谱':
+                    style_tag = '🍳 需烹饪食谱'
+                else:
+                    style_tag = '🥗 生食/即食搭配'
                 st.markdown(
                     f'<div class="metric-card"><b>方案 {i+1}</b> · 匹配度 '
                     f'<span style="color:#f97316;font-weight:800">'
-                    f'{r["match_score"]}%</span><br>{items_html}</div>',
+                    f'{r["match_score"]}%</span> · <span style="color:#2563eb">'
+                    f'{style_tag}</span><br>{items_html}</div>',
                     unsafe_allow_html=True)
                 nu = r['nutrition_per100g']
                 st.caption(f"每100g：{nu['calories']:.0f}kcal · "
@@ -515,6 +544,13 @@ elif page.startswith('🧭'):
             '经低钠/低糖/调味品占比罚分排序、配比局部精修与多样性挑选输出 '
             'Top-3 方案；随机种子固定，结果可复现。</div>',
             unsafe_allow_html=True)
+        st.caption(
+            '说明：味觉预测基于原料营养按克数加和计算，未建模烹饪过程'
+            '（美拉德反应、焦糖化、蛋白质变性等）对风味的影响。'
+            '「🍽️ 饮食搭配」为一餐内可独立成菜的食材组合，按混合营养评估整体味型；'
+            '「🥗 生食/即食搭配」预测可信度较高；'
+            '「🍳 需烹饪食谱」的预测反映原料混合的基础味型，'
+            '实际成品味道可能因烹饪方式产生差异，建议作为食材选型与配比参考。')
 
 # ================================================================= 味觉预测
 elif page.startswith('🧪'):
@@ -618,6 +654,7 @@ elif page.startswith('🧪'):
     with p2:
         st.markdown('#### 六维味觉强度')
         st.markdown(taste_tags(pred), unsafe_allow_html=True)
+        interval_panel(pred)
         for k in TASTE_ORDER:
             st.slider(TASTE_CN[k], 0.0, 10.0, float(pred[k]), 0.1,
                       disabled=True)

@@ -22,12 +22,14 @@ from taste_model import (  # noqa: E402
     apply_taste_interactions,
 )
 from inverse_design import design_recipes, SCENARIOS  # noqa: E402
+from uncertainty import TasteUncertainty  # noqa: E402
 
 DATA_PATH = Path(__file__).resolve().parent.parent / 'data' / 'food_database.csv'
 
 MODEL = TastePredictionModel()
 ANALYZER = NutritionAnalyzer()
 EVALUATOR = FoodEvaluator()
+UQ = TasteUncertainty()  # 出厂校准半宽, 装载秒级, 为点预测附加80%预测区间
 DF = None
 
 
@@ -44,9 +46,10 @@ async def lifespan(app):
 
 app = FastAPI(
     title='味析 NutriTongue API',
-    version='1.0.0',
-    description='AI 虚拟电子舌：从营养成分数据预测六维味觉特征（甜/酸/咸/苦/鲜/涩），'
-                '并提供营养分析、食品查询、配方混合与营养成分表OCR识别能力。',
+    version='1.1.0',
+    description='AI 虚拟电子舌：从营养成分数据预测六维味觉特征（甜/酸/咸/苦/鲜/涩）'
+                '并给出80%保形预测区间，提供营养分析、食品查询、配方混合'
+                '与营养成分表OCR识别能力。',
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -95,6 +98,8 @@ class DesignInput(BaseModel):
     scenario: str = Field('通用', description='应用场景: 通用/饮品·甜品/菜肴·主食')
     low_sodium: bool = Field(False, description='低钠约束(<=120mg/100g)')
     low_sugar: bool = Field(False, description='低糖约束(<=5g/100g)')
+    mode: str = Field('product', description='输出类型: product=食品设计(单一成品), '
+                                             'meal=饮食搭配(一餐组合, 放宽类别一致性)')
     n_results: int = Field(3, ge=1, le=5, description='返回方案数')
 
 
@@ -117,6 +122,7 @@ def predict_taste(n: NutritionInput):
     pred = MODEL.predict(n.model_dump())
     return {
         'taste': pred,
+        'taste_interval_80': UQ.interval_for(pred),
         'description': EVALUATOR.taste_description(pred),
         'pairing': EVALUATOR.pairing_suggestion(pred),
     }
@@ -215,6 +221,7 @@ def analyze_recipe(r: RecipeInput):
         'total_grams': round(total, 1),
         'mixed_nutrition_per_100g': mix,
         'taste': pred,
+        'taste_interval_80': UQ.interval_for(pred),
         'taste_raw': pred_raw,
         'interactions': inter_notes,
         'description': EVALUATOR.taste_description(pred),
@@ -237,8 +244,8 @@ def inverse_design_api(inp: DesignInput):
                              total_grams=inp.total_grams, k=inp.k,
                              scenario=inp.scenario,
                              low_sodium=inp.low_sodium, low_sugar=inp.low_sugar,
-                             n_results=inp.n_results)
-    return {'target': inp.target, 'scenario': inp.scenario,
+                             mode=inp.mode, n_results=inp.n_results)
+    return {'target': inp.target, 'scenario': inp.scenario, 'mode': inp.mode,
             'total_grams': inp.total_grams, 'results': results}
 
 
