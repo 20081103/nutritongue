@@ -57,7 +57,7 @@ class TastePredictionModel:
         整体 R2 与各味觉维度全面不劣于 HistGradientBoosting(苦味 0.71 vs
         0.58), 且小数据规模下训练更快, 故切换为本方案基础模型。
         超参经网格调优(统一5折CV): subsample=0.8 随机梯度提升可抑制小样本
-        过拟合, CV 0.797->0.810, 留出 0.778->0.780, 六维全面不降。
+        过拟合, CV 0.797->0.809, 留出 0.778->0.779, 六维全面不降。
         """
         return GradientBoostingRegressor(
             n_estimators=200, learning_rate=0.05, subsample=0.8,
