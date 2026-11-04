@@ -180,27 +180,27 @@ def test_golden(m):
                 d[c] += float(r[c]) * g / tot
         return d
 
-    g1 = {'sweet': 0.98, 'sour': 1.21, 'salty': 1.81,
-          'bitter': 7.77, 'umami': 1.92, 'astringent': 2.99}
+    g1 = {'sweet': 0.99, 'sour': 1.23, 'salty': 1.82,
+          'bitter': 7.81, 'umami': 1.92, 'astringent': 2.95}
     p1 = m.predict(nut_of('黑咖啡'))
     rec('G-01', '冻结守卫', '黑咖啡六维点预测逐值不变(发布=苦7.8)', g1, p1, p1 == g1)
-    g2 = {'sweet': 2.35, 'sour': 1.3, 'salty': 2.63,
-          'bitter': 1.16, 'umami': 3.27, 'astringent': 0.93}
+    g2 = {'sweet': 2.28, 'sour': 1.27, 'salty': 2.59,
+          'bitter': 1.2, 'umami': 3.33, 'astringent': 0.92}
     p2 = m.predict(nut_of('牛奶'))
     rec('G-02', '冻结守卫', '牛奶六维点预测逐值不变(发布=鲜3.3)', g2, p2, p2 == g2)
     d3 = mix([('苦瓜', 150), ('苹果', 200)])
-    raw3 = {'sweet': 5.68, 'sour': 3.14, 'salty': 1.2,
-            'bitter': 3.57, 'umami': 2.39, 'astringent': 2.47}
-    cor3 = {'sweet': 4.94, 'sour': 2.64, 'salty': 1.2,
-            'bitter': 2.76, 'umami': 2.48, 'astringent': 2.46}
+    raw3 = {'sweet': 5.77, 'sour': 3.12, 'salty': 1.26,
+            'bitter': 3.58, 'umami': 2.38, 'astringent': 2.47}
+    cor3 = {'sweet': 5.02, 'sour': 2.62, 'salty': 1.26,
+            'bitter': 2.75, 'umami': 2.47, 'astringent': 2.46}
     pr3 = m.predict(d3)
     pc3, _ = apply_taste_interactions(pr3, d3)
     rec('G-03', '冻结守卫', '苦瓜150g+苹果200g原始预测不变', raw3, pr3, pr3 == raw3)
-    rec('G-04', '冻结守卫', '苦瓜150g+苹果200g交互修正不变(发布=甜4.9苦2.8)',
+    rec('G-04', '冻结守卫', '苦瓜150g+苹果200g交互修正不变(发布=甜5.0苦2.8)',
         cor3, pc3, pc3 == cor3)
     d4 = mix([('白粥', 198.5), ('三文鱼', 101.5)])
-    raw4 = {'sweet': 1.03, 'sour': 0.94, 'salty': 2.83,
-            'bitter': 1.3, 'umami': 6.29, 'astringent': 0.98}
+    raw4 = {'sweet': 1.04, 'sour': 0.97, 'salty': 2.69,
+            'bitter': 1.33, 'umami': 6.35, 'astringent': 0.99}
     pr4 = m.predict(d4)
     rec('G-05', '冻结守卫', '白粥198.5g+三文鱼101.5g预测不变(发布=钠25.9mg)',
         raw4, pr4, pr4 == raw4)

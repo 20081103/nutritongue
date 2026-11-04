@@ -30,10 +30,10 @@ class TasteUncertainty:
 
     CONFIDENCE = 0.8
 
-    # 出厂校准半宽(281种数据库v最终版, 5折交叉保形, 覆盖率0.806)
+    # 出厂校准半宽(281种数据库v第三轮修复版, 5折交叉保形, 覆盖率0.806)
     # 数据库或主模型变动时须调用 train() 重新校准
-    DEFAULT_MARGINS = {'sweet': 1.038, 'sour': 0.788, 'salty': 0.823,
-                       'bitter': 0.749, 'umami': 1.144, 'astringent': 1.011}
+    DEFAULT_MARGINS = {'sweet': 1.078, 'sour': 0.793, 'salty': 0.782,
+                       'bitter': 0.736, 'umami': 1.132, 'astringent': 1.032}
 
     def __init__(self, pretrained=True):
         base = TastePredictionModel()
